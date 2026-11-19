@@ -1,4 +1,4 @@
-name: SONOFF Dongle Plus MG24 OpenThread RCP
+name: SONOFF Dongle Plus MG24 OpenThread RCP (460800, SW Flow)
 device: EFR32MG24A420F1536IM48
 base_project: src/openthread_rcp
 filename: "{manifest_name}_{ot_rcp_version.split('/')[-1]}_gsdk_{sdk_version}"
@@ -7,15 +7,11 @@ toolchain: "llvm:23.1.0"
 
 c_flags:
   - -O2
-  - -flto
-  - --config=Omax.cfg
-  - --config=OmaxLTO.cfg
+  - -flto=full
 
 ld_flags:
   - -O2
-  - -flto
-  - --config=Omax.cfg
-  - --config=OmaxLTO.cfg
+  - -flto=full
 
 gbl:
   fw_type: openthread_rcp

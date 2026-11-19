@@ -1,4 +1,4 @@
-name: SONOFF Dongle Plus MG24 OpenThread RCP (1000000)
+name: SONOFF Dongle Plus MG24 OpenThread RCP (1000000, No Flow)
 device: EFR32MG24A420F1536IM48
 base_project: src/openthread_rcp
 filename: "{manifest_name}_{ot_rcp_version.split('/')[-1]}_gsdk_{sdk_version}"
@@ -7,21 +7,17 @@ toolchain: "llvm:23.1.0"
 
 c_flags:
   - -O2
-  - -flto
-  - --config=Omax.cfg
-  - --config=OmaxLTO.cfg
+  - -flto=full
 
 ld_flags:
   - -O2
-  - -flto
-  - --config=Omax.cfg
-  - --config=OmaxLTO.cfg
+  - -flto=full
 
 gbl:
   fw_type: openthread_rcp
   ot_rcp_version: dynamic
   baudrate: 1000000
-  fw_variant: sw_flow
+  fw_variant: no_flow
 
 sdk_extension:
   - id: watchdog
@@ -35,11 +31,11 @@ add_components:
 
 sdk_patches:
   - disable_gp_rx_filter.patch
-  - uart_tx_bounded_wait_sw_flow.patch
-  - uart_tx_drop_on_timeout.patch
 
 configuration:
-  SL_IOSTREAM_EUSART_VCOM_FLOW_CONTROL_TYPE: SL_IOSTREAM_EUSART_UART_FLOW_CTRL_SOFT
+  SL_IOSTREAM_EUSART_VCOM_FLOW_CONTROL_TYPE: SL_IOSTREAM_EUSART_UART_FLOW_CTRL_NONE
+  CIRCULAR_QUEUE_LEN_MAX: 32
+  SL_OPENTHREAD_RADIO_RX_BUFFER_COUNT: 32
 
 c_defines:
   OPENTHREAD_CONFIG_NCP_TX_BUFFER_SIZE:
@@ -53,7 +49,7 @@ c_defines:
   SL_IOSTREAM_EUSART_VCOM_PERIPHERAL: EUSART1
   SL_IOSTREAM_EUSART_VCOM_PERIPHERAL_NO: 1
   SL_IOSTREAM_EUSART_VCOM_BAUDRATE: 1000000
-  SL_IOSTREAM_EUSART_VCOM_FLOW_CONTROL_TYPE: SL_IOSTREAM_EUSART_UART_FLOW_CTRL_SOFT
+  SL_IOSTREAM_EUSART_VCOM_FLOW_CONTROL_TYPE: SL_IOSTREAM_EUSART_UART_FLOW_CTRL_NONE
   SL_IOSTREAM_EUSART_VCOM_TX_PORT: SL_GPIO_PORT_C
   SL_IOSTREAM_EUSART_VCOM_TX_PIN: 1
   SL_IOSTREAM_EUSART_VCOM_RX_PORT: SL_GPIO_PORT_C
