@@ -1,0 +1,110 @@
+--- a/platform_core/platform/service/iostream/src/sl_iostream_uart.c
++++ b/platform_core/platform/service/iostream/src/sl_iostream_uart.c
+@@ -54,6 +54,10 @@
+ #include "sl_power_manager.h"
+ #endif
+ 
++#if defined(SL_CATALOG_SLEEPTIMER_PRESENT)
++#include "sl_sleeptimer.h"
++#endif
++
+ #include <string.h>
+ #include <stdbool.h>
+ #include <stddef.h>
+@@ -778,6 +782,10 @@
+   bool lf_to_crlf = false;
+   sl_status_t status = SL_STATUS_FAIL;
+ 
++  if (buffer_length == 0) {
++    return SL_STATUS_OK;
++  }
++
+   sl_atomic_load(lf_to_crlf, uart_context->lf_to_crlf);
+ 
+ #if defined(SL_CATALOG_POWER_MANAGER_PRESENT) && !defined(SL_IOSTREAM_UART_FLUSH_TX_BUFFER)
+@@ -791,6 +799,15 @@
+ #endif
+ 
+   uint32_t i = 0;
++#if defined(SL_CATALOG_SLEEPTIMER_PRESENT)
++  uint32_t xoff_start_tick = 0;
++  uint32_t call_start_tick = 0;
++  bool xoff_timer_active = false;
++  bool call_timer_active = false;
++  const uint32_t xoff_timeout_ticks = sl_sleeptimer_ms_to_tick(50);
++  const uint32_t total_timeout_ticks = sl_sleeptimer_ms_to_tick(150);
++#endif
++
+   while (i < buffer_length) {
+     bool xon = false;
+     if (uart_context->sw_flow_control == true) {
+@@ -801,16 +818,48 @@
+       if ((lf_to_crlf == true) && (*c == '\n')) {
+         status = uart_context->uart_periph->tx(uart_context, '\r');
+         if (status != SL_STATUS_OK) {
+-          return status;
++          break;
+         }
+       }
+       status = uart_context->uart_periph->tx(uart_context, *c);
+       if (status != SL_STATUS_OK) {
+-        return status;
++        break;
+       }
++#if defined(SL_CATALOG_SLEEPTIMER_PRESENT)
++      xoff_timer_active = false;
++#endif
+       c++;
+       i++;
+-    }         // Active wait if xon is false
++    } else {
++      /*
++       * Do not allow software XOFF (either continuous or oscillating) to block
++       * the bare-metal RCP indefinitely and starve the watchdog.
++       */
++#if defined(SL_CATALOG_SLEEPTIMER_PRESENT)
++      const uint32_t now = sl_sleeptimer_get_tick_count();
++      if (!call_timer_active) {
++        call_start_tick = now;
++        call_timer_active = true;
++      } else if ((uint32_t)(now - call_start_tick) >= total_timeout_ticks) {
++        status = SL_STATUS_TIMEOUT;
++        break;
++      }
++      if (!xoff_timer_active) {
++        xoff_start_tick = now;
++        xoff_timer_active = true;
++      } else if ((uint32_t)(now - xoff_start_tick) >= xoff_timeout_ticks) {
++        status = SL_STATUS_TIMEOUT;
++        break;
++      }
++#else
++      /*
++       * If sleeptimer is absent, immediately abort blocked TX with timeout
++       * rather than entering an unbounded spinlock.
++       */
++      status = SL_STATUS_TIMEOUT;
++      break;
++#endif
++    }
+   }
+ 
+ #if defined(SL_CATALOG_POWER_MANAGER_PRESENT) && !defined(SL_IOSTREAM_UART_FLUSH_TX_BUFFER)
+@@ -845,7 +894,7 @@
+   }
+ #endif
+ 
+-  nolock_uart_write(context, buffer, buffer_length);
++  sl_status_t write_status = nolock_uart_write(context, buffer, buffer_length);
+ 
+ #if (defined(SL_CATALOG_KERNEL_PRESENT))
+   if (osKernelGetState() == osKernelRunning) {
+@@ -854,7 +903,7 @@
+     EFM_ASSERT(status == osOK);
+   }
+ #endif
+-  return SL_STATUS_OK;
++  return write_status;
+ }
+ 
+ /***************************************************************************//**
