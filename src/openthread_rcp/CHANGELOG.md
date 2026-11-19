@@ -1,3 +1,10 @@
+# SL-OPENTHREAD/3.1.2.0_GitHub-fb274efe6
+Built with OpenThread 3.1.2 from Simplicity SDK 2026.6.2, adding bounded-wait protection for software flow control and LLVM 23 LTO optimization for SONOFF Dongle Plus MG24.
+
+- Updated to Simplicity SDK 2026.6.2 (OpenThread 3.1.2.0).
+- Added a `sl_sleeptimer`-bounded wait (50 ms per continuous stall, 150 ms total per write) in `sl_iostream_uart.c` so held or oscillating XOFF cannot starve the bare-metal superloop and trigger a watchdog reset.
+- Added SONOFF Dongle Plus MG24 OpenThread RCP targets (460,800 baud default with stock Nabu Casa buffers, plus an explicit 1,000,000 baud variant) built with ATfE LLVM 23.1.0 + LTO.
+
 # SL-OPENTHREAD/3.1.1.0_GitHub-fb274efe6
 Built with OpenThread 3.1.0 from Simplicity SDK 2026.6.1, adding automatic recovery from firmware stalls and fixing serial link lockups.
 
