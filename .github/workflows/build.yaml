@@ -74,7 +74,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: toolchains
-          key: atfe-${{ hashFiles('tools/setup_toolchain.sh') }}
+          key: atfe-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/setup_toolchain.sh') }}
 
       - name: Setup ATfE toolchain
         run: ./tools/setup_toolchain.sh
@@ -90,21 +90,27 @@ jobs:
           docker run --rm \
             -v "${{ github.workspace }}:/repo" \
             -w /repo \
+            -e MATRIX_MANIFEST \
+            -e OUT_UID="$(id -u)" \
+            -e OUT_GID="$(id -g)" \
             --entrypoint /bin/bash \
             "${CONTAINER_IMAGE}" \
-            -c "
+            -c '
               set -euo pipefail
+              cleanup() {
+                chown -R "${OUT_UID}:${OUT_GID}" /repo/outputs /repo/build 2>/dev/null || true
+              }
+              trap cleanup EXIT
               export HOME=/tmp/home
-              mkdir -p \"\$HOME\"
+              mkdir -p "$HOME"
               /opt/venv/bin/python3 -m tools.build_project \
-                --manifest '${MATRIX_MANIFEST}' \
+                --manifest "$MATRIX_MANIFEST" \
                 --build-dir build \
                 --output-dir outputs \
                 --output gbl \
                 --output hex \
                 --output out
-              chown -R $(id -u):$(id -g) /repo/outputs
-            "
+            '
 
           output_basename=$(basename -- "$(ls -1 outputs/*.gbl | head -n 1)" .gbl)
           echo "output_basename=${output_basename}" >> "$GITHUB_OUTPUT"
@@ -163,7 +169,7 @@ jobs:
 
   release-assets:
     name: Upload release assets
-    needs: [generate-manifest]
+    needs: [run-pre-commit, generate-manifest]
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
     permissions:

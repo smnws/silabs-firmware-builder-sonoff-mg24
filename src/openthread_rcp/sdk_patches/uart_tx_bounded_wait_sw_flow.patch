@@ -11,7 +11,7 @@
  #include <string.h>
  #include <stdbool.h>
  #include <stddef.h>
-@@ -778,6 +782,10 @@
+@@ -778,19 +782,34 @@
    bool lf_to_crlf = false;
    sl_status_t status = SL_STATUS_FAIL;
  
@@ -22,23 +22,31 @@
    sl_atomic_load(lf_to_crlf, uart_context->lf_to_crlf);
  
  #if defined(SL_CATALOG_POWER_MANAGER_PRESENT) && !defined(SL_IOSTREAM_UART_FLUSH_TX_BUFFER)
-@@ -791,6 +799,15 @@
++  bool em1_added = false;
+   CORE_DECLARE_IRQ_STATE;
+   CORE_ENTER_ATOMIC();
+   if (uart_context->tx_idle == true && uart_context->enable_high_frequency) {
+     uart_context->tx_idle = false;
+     sl_power_manager_add_em_requirement(SL_POWER_MANAGER_EM1);
++    em1_added = true;
+   }
+   CORE_EXIT_ATOMIC();
  #endif
  
    uint32_t i = 0;
 +#if defined(SL_CATALOG_SLEEPTIMER_PRESENT)
 +  uint32_t xoff_start_tick = 0;
 +  uint32_t call_start_tick = 0;
++  uint32_t xoff_timeout_ticks = 0;
++  uint32_t total_timeout_ticks = 0;
 +  bool xoff_timer_active = false;
 +  bool call_timer_active = false;
-+  const uint32_t xoff_timeout_ticks = sl_sleeptimer_ms_to_tick(50);
-+  const uint32_t total_timeout_ticks = sl_sleeptimer_ms_to_tick(150);
 +#endif
 +
    while (i < buffer_length) {
      bool xon = false;
      if (uart_context->sw_flow_control == true) {
-@@ -801,16 +818,48 @@
+@@ -801,20 +820,63 @@
        if ((lf_to_crlf == true) && (*c == '\n')) {
          status = uart_context->uart_periph->tx(uart_context, '\r');
          if (status != SL_STATUS_OK) {
@@ -65,6 +73,8 @@
 +#if defined(SL_CATALOG_SLEEPTIMER_PRESENT)
 +      const uint32_t now = sl_sleeptimer_get_tick_count();
 +      if (!call_timer_active) {
++        xoff_timeout_ticks = sl_sleeptimer_ms_to_tick(50);
++        total_timeout_ticks = sl_sleeptimer_ms_to_tick(150);
 +        call_start_tick = now;
 +        call_timer_active = true;
 +      } else if ((uint32_t)(now - call_start_tick) >= total_timeout_ticks) {
@@ -90,7 +100,21 @@
    }
  
  #if defined(SL_CATALOG_POWER_MANAGER_PRESENT) && !defined(SL_IOSTREAM_UART_FLUSH_TX_BUFFER)
-@@ -845,7 +894,7 @@
+-  uart_context->uart_periph->tx_completed(context, true);
++  if (i == 0) {
++    CORE_ENTER_ATOMIC();
++    if (em1_added && uart_context->tx_idle == false) {
++      uart_context->tx_idle = true;
++      sl_power_manager_remove_em_requirement(SL_POWER_MANAGER_EM1);
++    }
++    CORE_EXIT_ATOMIC();
++  } else {
++    uart_context->uart_periph->tx_completed(context, true);
++  }
+ #endif
+ 
+   return status;
+@@ -845,7 +907,7 @@
    }
  #endif
  
@@ -99,7 +123,7 @@
  
  #if (defined(SL_CATALOG_KERNEL_PRESENT))
    if (osKernelGetState() == osKernelRunning) {
-@@ -854,7 +903,7 @@
+@@ -854,7 +916,7 @@
      EFM_ASSERT(status == osOK);
    }
  #endif

@@ -32,29 +32,47 @@ NEWLIB_NANO_TAR="ATfE-newlib-nano-overlay-${ATFE_VER}.tar.xz"
 mkdir -p "${TOOLCHAIN_DIR}"
 cd "${TOOLCHAIN_DIR}"
 
-if [ -d "${BASE_NAME}/bin" ] && [ -f "${BASE_NAME}/bin/newlib-nano.cfg" ]; then
+if [ -x "${BASE_NAME}/bin/clang" ] && [ -f "${BASE_NAME}/bin/newlib.cfg" ] && [ -f "${BASE_NAME}/bin/newlib-nano.cfg" ]; then
     echo "Toolchain ${BASE_NAME} is already downloaded and configured."
     exit 0
 fi
 
+TMP_DIR="$(mktemp -d "${TOOLCHAIN_DIR}/.${BASE_NAME}.tmp.XXXXXX")"
+cleanup() {
+    rm -rf "${TMP_DIR}"
+}
+trap cleanup EXIT
+
+CURL_OPTS=(-fsSL --retry 5 --retry-delay 2)
+if curl --help all 2>/dev/null | grep -q -- --retry-all-errors; then
+    CURL_OPTS+=(--retry-all-errors)
+else
+    CURL_OPTS+=(--retry-connrefused)
+fi
+
 echo "Downloading Arm Toolchain for Embedded (ATfE) ${ATFE_VER} (${ARCH})..."
-CURL_OPTS=(-fsSL --retry 5 --retry-delay 2 --retry-all-errors)
-curl "${CURL_OPTS[@]}" -o "${BASE_NAME}.tar.xz" "${RELEASE_URL}/${BASE_NAME}.tar.xz"
-curl "${CURL_OPTS[@]}" -o "${NEWLIB_TAR}" "${RELEASE_URL}/${NEWLIB_TAR}"
-curl "${CURL_OPTS[@]}" -o "${NEWLIB_NANO_TAR}" "${RELEASE_URL}/${NEWLIB_NANO_TAR}"
+curl "${CURL_OPTS[@]}" -o "${TMP_DIR}/${BASE_NAME}.tar.xz" "${RELEASE_URL}/${BASE_NAME}.tar.xz"
+curl "${CURL_OPTS[@]}" -o "${TMP_DIR}/${NEWLIB_TAR}" "${RELEASE_URL}/${NEWLIB_TAR}"
+curl "${CURL_OPTS[@]}" -o "${TMP_DIR}/${NEWLIB_NANO_TAR}" "${RELEASE_URL}/${NEWLIB_NANO_TAR}"
 
 echo "Verifying SHA-256 checksums..."
-sha256sum -c <<EOF
+(cd "${TMP_DIR}" && sha256sum -c <<EOF
 ${ATFE_SHA256}  ${BASE_NAME}.tar.xz
 ${NEWLIB_SHA256}  ${NEWLIB_TAR}
 ${NEWLIB_NANO_SHA256}  ${NEWLIB_NANO_TAR}
 EOF
+)
 
 echo "Extracting toolchain and runtime overlays..."
-tar -xf "${BASE_NAME}.tar.xz"
-tar -xf "${NEWLIB_TAR}" -C "${BASE_NAME}"
-tar -xf "${NEWLIB_NANO_TAR}" -C "${BASE_NAME}"
+tar -xf "${TMP_DIR}/${BASE_NAME}.tar.xz" -C "${TMP_DIR}"
+tar -xf "${TMP_DIR}/${NEWLIB_TAR}" -C "${TMP_DIR}/${BASE_NAME}"
+tar -xf "${TMP_DIR}/${NEWLIB_NANO_TAR}" -C "${TMP_DIR}/${BASE_NAME}"
 
-rm -f "${BASE_NAME}.tar.xz" "${NEWLIB_TAR}" "${NEWLIB_NANO_TAR}"
+test -x "${TMP_DIR}/${BASE_NAME}/bin/clang"
+test -f "${TMP_DIR}/${BASE_NAME}/bin/newlib.cfg"
+test -f "${TMP_DIR}/${BASE_NAME}/bin/newlib-nano.cfg"
+
+rm -rf "${TOOLCHAIN_DIR}/${BASE_NAME}"
+mv "${TMP_DIR}/${BASE_NAME}" "${TOOLCHAIN_DIR}/${BASE_NAME}"
 
 echo "Toolchain setup complete at ${TOOLCHAIN_DIR}/${BASE_NAME}"
