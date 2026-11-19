@@ -38,9 +38,10 @@ if [ -d "${BASE_NAME}/bin" ] && [ -f "${BASE_NAME}/bin/newlib-nano.cfg" ]; then
 fi
 
 echo "Downloading Arm Toolchain for Embedded (ATfE) ${ATFE_VER} (${ARCH})..."
-curl -fL -o "${BASE_NAME}.tar.xz" "${RELEASE_URL}/${BASE_NAME}.tar.xz"
-curl -fL -o "${NEWLIB_TAR}" "${RELEASE_URL}/${NEWLIB_TAR}"
-curl -fL -o "${NEWLIB_NANO_TAR}" "${RELEASE_URL}/${NEWLIB_NANO_TAR}"
+CURL_OPTS=(-fsSL --retry 5 --retry-delay 2 --retry-all-errors)
+curl "${CURL_OPTS[@]}" -o "${BASE_NAME}.tar.xz" "${RELEASE_URL}/${BASE_NAME}.tar.xz"
+curl "${CURL_OPTS[@]}" -o "${NEWLIB_TAR}" "${RELEASE_URL}/${NEWLIB_TAR}"
+curl "${CURL_OPTS[@]}" -o "${NEWLIB_NANO_TAR}" "${RELEASE_URL}/${NEWLIB_NANO_TAR}"
 
 echo "Verifying SHA-256 checksums..."
 sha256sum -c <<EOF
