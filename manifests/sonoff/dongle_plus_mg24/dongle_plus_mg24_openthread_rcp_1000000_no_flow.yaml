@@ -37,6 +37,11 @@ configuration:
   CIRCULAR_QUEUE_LEN_MAX: 32
   SL_OPENTHREAD_RADIO_RX_BUFFER_COUNT: 32
 
+slcp_defines:
+  # MG24 20 dBm PA table rounds 70 deci-dBm down to 6.0 dBm actual (0x15);
+  # stock 6 (60 deci-dBm) rounds down to 5.1 dBm (0x13).
+  OPENTHREAD_CONFIG_DEFAULT_TRANSMIT_POWER: 7
+
 c_defines:
   OPENTHREAD_CONFIG_NCP_TX_BUFFER_SIZE:
     type: c_flag

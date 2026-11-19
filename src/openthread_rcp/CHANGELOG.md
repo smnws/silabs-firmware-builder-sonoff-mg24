@@ -3,7 +3,7 @@ Built with OpenThread 3.1.2 from Simplicity SDK 2026.6.2 and ATfE LLVM 23.1.0 LT
 
 - Updated to Simplicity SDK 2026.6.2 (OpenThread 3.1.2.0) built with ATfE LLVM 23.1.0 (`-O2` + `-flto=full`).
 - Added four SONOFF Dongle Plus MG24 OpenThread RCP variants: `460800` and `1000000` baud in both `no_flow` and `sw_flow` (`XON`/`XOFF`) configurations (`460800` `no_flow` recommended for unpatched OTBR).
-- Doubled UART and radio RX buffers on `1000000` variants (`8192 B` NCP TX, `1024 B` VCOM RX, `32` radio RX buffers; `460800` variants use ZBT-2 sizes: `4096 B` / `512 B` / `16`).
+- Doubled UART and radio RX buffers on `1000000` variants (`8192 B` NCP TX, `1024 B` VCOM RX, `32` radio RX buffers; `460800` variants use ZBT-2 sizes: `4096 B` / `512 B` / `16`) and set `OPENTHREAD_CONFIG_DEFAULT_TRANSMIT_POWER=7` on `1000000` variants so MG24 PA quantization lands on `6.0 dBm` actual output (`6 dBm` in `ot-ctl txpower`).
 - On `sw_flow` variants only, added a `sl_sleeptimer`-bounded wait (50 ms continuous stall, 150 ms max from the first XOFF stall in a write call) in `sl_iostream_uart.c` paired with `uart_tx_drop_on_timeout.patch` so held or oscillating XOFF cannot starve the bare-metal superloop and trigger a watchdog reset (`no_flow` variants omit both UART TX timeout patches).
 
 # SL-OPENTHREAD/3.1.1.0_GitHub-fb274efe6
