@@ -16,3 +16,6 @@ src/**/*.bak
 misc/**/*.bak
 var/
 *.zap~
+outputs/
+__pycache__/
+toolchains/

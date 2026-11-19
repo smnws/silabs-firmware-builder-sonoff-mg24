@@ -55,7 +55,10 @@ def ensure_folder(path: str | pathlib.Path) -> pathlib.Path:
 
 def get_toolchain_default_paths() -> list[pathlib.Path]:
     """Return the path to the toolchain."""
-    return list(pathlib.Path("/opt/toolchains").glob("*"))
+    paths = list(pathlib.Path("/opt/toolchains").glob("*"))
+    paths += [p for p in pathlib.Path("/repo/toolchains").glob("ATfE*") if p.is_dir()]
+    paths += [p for p in pathlib.Path("toolchains").glob("ATfE*") if p.is_dir()]
+    return [p for p in dict.fromkeys(p.resolve() for p in paths if p.is_dir())]
 
 
 def get_apack_default_paths() -> list[pathlib.Path]:
@@ -164,8 +167,11 @@ def load_toolchains(paths: list[pathlib.Path]) -> dict[pathlib.Path, str]:
             continue
 
         gcc_plugin_version_h = next(
-            toolchain.glob("lib/gcc/arm-none-eabi/*/plugin/include/plugin-version.h")
+            toolchain.glob("lib/gcc/arm-none-eabi/*/plugin/include/plugin-version.h"),
+            None,
         )
+        if gcc_plugin_version_h is None:
+            continue
         version_info = {}
 
         for line in gcc_plugin_version_h.read_text().split("\n"):
@@ -593,6 +599,20 @@ def build_argument_parser() -> argparse.ArgumentParser:
         type=ensure_folder,
         default=get_apack_default_paths(),
         help="Path to a folder containing an slc adapter pack",
+    )
+    parser.add_argument(
+        "--c-flag",
+        action="append",
+        dest="c_flags",
+        default=[],
+        help="Additional C/CXX compiler flags",
+    )
+    parser.add_argument(
+        "--ld-flag",
+        action="append",
+        dest="ld_flags",
+        default=[],
+        help="Additional linker flags",
     )
     parser.add_argument(
         "--override",
@@ -1094,6 +1114,8 @@ def warning_flags(toolchain: Toolchain) -> list[str]:
             "-Wno-error=unused-function",  # unused statics in SDK/OpenThread sources
             "-Wno-error=c23-extensions",  # our `cmds_proprietary.c` has a label before a declaration
             "-Wno-error=unterminated-string-initialization",  # char arrays in zigbee router sources
+            "-Wno-error=unused-template",  # unused template functions in OpenThread sources
+            "-Wno-ignored-optimization-argument",
         ],
         Toolchain.GCC: [
             "-Wall",
@@ -1107,8 +1129,17 @@ def warning_flags(toolchain: Toolchain) -> list[str]:
 
 
 def assemble_build_flags(
-    build: ResolvedBuild, c_flag_defines: list[str]
+    build: ResolvedBuild,
+    c_flag_defines: list[str],
+    extra_c_flags: list[str] | None = None,
+    extra_ld_flags: list[str] | None = None,
 ) -> dict[str, list[str]]:
+    extra_c_flags = extra_c_flags or []
+    extra_ld_flags = extra_ld_flags or []
+
+    manifest_c_flags = build.manifest.config.get("c_flags", [])
+    manifest_ld_flags = build.manifest.config.get("ld_flags", [])
+
     c_flags = (
         c_flag_defines
         + [
@@ -1116,24 +1147,44 @@ def assemble_build_flags(
             for src, dst in sdk_path_remaps(build).items()
         ]
         + warning_flags(build.toolchain)
+        + manifest_c_flags
+        + extra_c_flags
     )
 
-    return {
-        "C_FLAGS": c_flags,
-        "CXX_FLAGS": c_flags,
-        "LD_FLAGS": [
+    cxx_flags = list(build.manifest.config.get("cxx_flags", c_flags))
+
+    ld_flags = (
+        [
             # Ensure deterministic linking order
             "-Wl,--sort-section=name",
             # Kept for `validate_linker_wraps`. Non-alloc, so the GBL and HEX are
             # byte-identical with or without it.
             "-Wl,--emit-relocs",
-        ],
+        ]
+        + manifest_ld_flags
+        + extra_ld_flags
+    )
+
+    return {
+        "C_FLAGS": c_flags,
+        "CXX_FLAGS": cxx_flags,
+        "LD_FLAGS": ld_flags,
     }
 
 
 def cmake_configure_and_build(
     build: ResolvedBuild, build_flags: dict[str, list[str]]
 ) -> None:
+    # Replace SDK default -Oz if -O2 or -Os is requested
+    if build.project_cmake.exists():
+        cmake_text = build.project_cmake.read_text()
+        if any(f == "-O2" for f in build_flags["C_FLAGS"]):
+            cmake_text = cmake_text.replace("-Oz", "-O2")
+            build.project_cmake.write_text(cmake_text)
+        elif any(f == "-Os" for f in build_flags["C_FLAGS"]):
+            cmake_text = cmake_text.replace("-Oz", "-Os")
+            build.project_cmake.write_text(cmake_text)
+
     # The GBL is built in-process after the link, so neutralize the SDK's post-build
     # hook. CMake expects a semicolon-separated list for the command.
     cmake_post_build_command = ";".join([shutil.which("cmake"), "-E", "true"])
@@ -1291,13 +1342,22 @@ def main() -> None:
         }
     )
     exclude_definitions_from_lto(build, definitions)
-    cmake_configure_and_build(build, assemble_build_flags(build, c_flag_defines))
-
-    validate_linker_wraps(
-        elf_path=(build.cmake_dir / build.base_project_name).with_suffix(".out"),
-        targets=wrapped,
-        required=required_wraps & wrapped,
+    cmake_configure_and_build(
+        build,
+        assemble_build_flags(
+            build,
+            c_flag_defines,
+            extra_c_flags=args.c_flags,
+            extra_ld_flags=args.ld_flags,
+        ),
     )
+
+    if build.toolchain is not Toolchain.LLVM:
+        validate_linker_wraps(
+            elf_path=(build.cmake_dir / build.base_project_name).with_suffix(".out"),
+            targets=wrapped,
+            required=required_wraps & wrapped,
+        )
 
     # Extract the metadata from the source and build trees, patch the ELF, and build the
     # GBL. This runs before the debug paths below are rewritten, as the GBL contains only
